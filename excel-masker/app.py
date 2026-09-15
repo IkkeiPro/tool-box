@@ -65,10 +65,23 @@ def mask_xlsx(data, mapping):
                     # Join rich-text runs so names split by character formatting are found.
                     for el in list(doc.getElementsByTagName('*')):
                         if el.localName in ('si', 'is', 'text', 'p'):
-                            texts = [n for n in el.getElementsByTagName('*') if n.localName == 't']
+                            def is_phonetic(node):
+                                parent = node.parentNode
+                                while parent is not None and parent is not el:
+                                    if getattr(parent, 'localName', None) == 'rPh':
+                                        return True
+                                    parent = parent.parentNode
+                                return False
+                            texts = [n for n in el.getElementsByTagName('*')
+                                     if n.localName == 't' and not is_phonetic(n)]
                             old = ''.join(''.join(c.data for c in n.childNodes if c.nodeType in (3, 4)) for n in texts)
                             if texts and pattern.search(old):
                                 value = replace(old)
+                                # Excel stores furigana separately from the displayed text.
+                                # Never append it to the cell; remove it when masking its name.
+                                for phonetic in list(el.getElementsByTagName('*')):
+                                    if phonetic.localName in ('rPh', 'phoneticPr'):
+                                        phonetic.parentNode.removeChild(phonetic)
                                 for index, node in enumerate(texts):
                                     for child in list(node.childNodes):
                                         node.removeChild(child)

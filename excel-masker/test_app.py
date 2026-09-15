@@ -37,6 +37,28 @@ class Tests(unittest.TestCase):
     def test_sheet_name_blocks(self):
         with self.assertRaises(ValueError):
             mask_xlsx(fixture(sheet='玉崎'), self.m)
+    def test_excel_furigana_is_removed_not_appended(self):
+        for container, value in [('si', '<t>玉﨑</t>'),
+                                 ('is', '<r><t>玉</t></r><r><t>﨑</t></r>')]:
+            with self.subTest(container=container):
+                xml = (f'<root><{container}>{value}'
+                       '<rPh sb="0" eb="2"><t>タマサキ</t></rPh>'
+                       f'<phoneticPr fontId="1"/></{container}></root>')
+                data = fixture(extra={'xl/sharedStrings.xml': xml})
+                result, counts, _ = mask_xlsx(data, {'玉﨑':'会社Aのメンバー1'})
+                with zipfile.ZipFile(io.BytesIO(result)) as z:
+                    doc = minidom.parseString(z.read('xl/sharedStrings.xml'))
+                    self.assertEqual('会社Aのメンバー1', ''.join(
+                        n.firstChild.data if n.firstChild else ''
+                        for n in doc.getElementsByTagName('t')))
+                    self.assertEqual(0, len(doc.getElementsByTagName('rPh')))
+                    self.assertEqual(0, len(doc.getElementsByTagName('phoneticPr')))
+                    self.assertEqual(1, counts['玉﨑'])
+    def test_unmatched_furigana_preserved(self):
+        xml = '<sst><si><t>東京</t><rPh sb="0" eb="2"><t>トウキョウ</t></rPh></si></sst>'
+        result, _, _ = mask_xlsx(fixture(extra={'xl/sharedStrings.xml': xml}), self.m)
+        with zipfile.ZipFile(io.BytesIO(result)) as z:
+            self.assertEqual(xml.encode(), z.read('xl/sharedStrings.xml'))
     def test_formula_reference_blocks(self):
         with self.assertRaises(ValueError):
             mask_xlsx(fixture(extra={'xl/worksheets/sheet3.xml': '<worksheet><f>玉崎!A1</f></worksheet>'}), self.m)
